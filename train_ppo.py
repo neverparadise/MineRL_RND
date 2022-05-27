@@ -16,6 +16,9 @@ import argparse
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+SAVE_PATH = "C:/Users/ye200/OneDrive/Desktop/MineRL_RND/weights"
+summary_path = "C:/Users/ye200/OneDrive/Desktop/MineRL_RND/experiments"
+
 
 def make_11action(env, action_index, always_attack=True):
     # Action들을 정의
@@ -170,13 +173,18 @@ class PPO(nn.Module):
             self.optimizer.zero_grad()
             loss.mean().backward()
             self.optimizer.step()
+        
+        return loss.mean().item()
 
 
 
-total_episodes = 5
+total_episodes = 100000
 print_interval = 20
 
 def main():
+    if not os.path.isdir(summary_path):
+        os.mkdir(summary_path)
+    writer = SummaryWriter(summary_path)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     env = gym.make("MineRLTreechop-v0")
     env.make_interactive(port=6666, realtime=False)
@@ -187,6 +195,7 @@ def main():
         score = 0.0
         s = env.reset()
         done = False
+        loss = 0.0
         while not done:
             for t in range(T_horizon):
                 prob = model.pi(converter(s, device), softmax_dim=1).squeeze(0)
@@ -199,12 +208,18 @@ def main():
                 s = s_prime
                 score += r
                 if done:
-                    print("# of episode :{}, score : {:.1f}".format(n_epi, score))
                     break
+            if done:
+                writer.add_scalar("total_rewards", score, n_epi)
+                writer.add_scalar("loss", loss, n_epi)
+                print("# of episode :{}, score : {:.1f}".format(n_epi, score))
+                break
+                   
+            loss = model.train_net()
+        if n_epi % 100 == 0:
+            save_model(model)
 
-            model.train_net()
     env.close()
-    save_model(model)
 
 if __name__ == '__main__':
     main()
